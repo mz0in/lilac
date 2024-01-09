@@ -12,11 +12,13 @@
     isSignalField,
     isSignalRootField,
     isSortableField,
+    isStringField,
     serializePath,
     type LilacField
   } from '$lilac';
   import {Modal, OverflowMenu, OverflowMenuItem} from 'carbon-components-svelte';
   import {InProgress} from 'carbon-icons-svelte';
+  import {openClusterModal} from '../ComputeClusterModal.svelte';
   import {Command, triggerCommand} from '../commands/Commands.svelte';
   import {hoverTooltip} from '../common/HoverTooltip';
 
@@ -44,7 +46,7 @@
   $: computedEmbeddings = getComputedEmbeddings($schema.data, field.path);
 
   $: isPreview = isPreviewSignal($selectRowsSchema?.data || null, field.path);
-  $: canComputeSignal = !isSignal && isSortableField(field) && !isPreview;
+  $: canComputeSignal = !isSignal && isStringField(field) && !isPreview;
   $: hasMenu =
     !isPreview &&
     (isSortableField(field) || isFilterableField(field) || canComputeSignal || isDeletable);
@@ -80,6 +82,27 @@
             path: field.path
           })}
       />
+    {/if}
+    {#if canComputeSignal}
+      <div
+        class="w-full"
+        use:hoverTooltip={{
+          text: !canComputeSignals
+            ? 'User does not have access to compute clusters over this dataset.'
+            : ''
+        }}
+      >
+        <OverflowMenuItem
+          text="Compute clusters"
+          disabled={!canComputeSignals}
+          on:click={() =>
+            openClusterModal({
+              namespace,
+              datasetName,
+              input: field?.path
+            })}
+        />
+      </div>
     {/if}
     {#if canComputeSignal}
       <div
@@ -149,18 +172,7 @@
         />
       </div>
     {/if}
-    {#if canComputeSignal}
-      <OverflowMenuItem
-        text="Preview signal"
-        on:click={() =>
-          triggerCommand({
-            command: Command.PreviewConcept,
-            namespace,
-            datasetName,
-            path: field?.path
-          })}
-      />
-    {/if}
+
     {#if isDeletable}
       <div
         class="w-full"
