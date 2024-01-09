@@ -9,13 +9,13 @@
     getSelectRowsOptions,
     getSelectRowsSchemaOptions
   } from '$lib/stores/datasetViewStore';
-  import Carousel from 'svelte-carousel';
 
   import {datasetLink} from '$lib/utils';
   import {ROWID, type BinaryFilter, type Path, type UnaryFilter} from '$lilac';
   import {SkeletonText} from 'carbon-components-svelte';
-  import {ChevronLeft, ChevronRight, Information} from 'carbon-icons-svelte';
-  import {createEventDispatcher} from 'svelte';
+  import {Information} from 'carbon-icons-svelte';
+  import {createEventDispatcher, onDestroy, onMount} from 'svelte';
+  import Carousel from '../common/Carousel.svelte';
   import {hoverTooltip} from '../common/HoverTooltip';
 
   export let filter: BinaryFilter | UnaryFilter;
@@ -26,7 +26,26 @@
   // server.
   export let shouldLoad = false;
 
-  let isExpanded = true;
+  const ITEMS_PER_PAGE = 6;
+
+  let isOnScreen = false;
+  let root: HTMLDivElement;
+  let observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        isOnScreen = true;
+        observer.disconnect();
+      }
+    });
+  });
+
+  onMount(() => {
+    observer.observe(root);
+  });
+
+  onDestroy(() => {
+    observer.disconnect();
+  });
 
   const store = getDatasetViewContext();
 
@@ -39,24 +58,26 @@
   $: filters = [filter, ...(selectOptions.filters || [])];
 
   $: selectOptions = getSelectRowsOptions($store);
-  $: rowsQuery = shouldLoad
-    ? querySelectRows(
-        $store.namespace,
-        $store.datasetName,
-        {...selectOptions, columns: [ROWID], limit: 1, filters},
-        $selectRowsSchema.data?.schema
-      )
-    : null;
+  $: rowsQuery =
+    shouldLoad && isOnScreen
+      ? querySelectRows(
+          $store.namespace,
+          $store.datasetName,
+          {...selectOptions, columns: [ROWID], limit: 1, filters},
+          $selectRowsSchema.data?.schema
+        )
+      : null;
   $: numRowsInGroup = $rowsQuery?.data?.total_num_rows;
 
-  $: countQuery = shouldLoad
-    ? querySelectGroups($store.namespace, $store.datasetName, {
-        leaf_path: path,
-        filters,
-        // Explicitly set the limit to null to get all the groups, not just the top 100.
-        limit: null
-      })
-    : null;
+  $: countQuery =
+    shouldLoad && isOnScreen
+      ? querySelectGroups($store.namespace, $store.datasetName, {
+          leaf_path: path,
+          filters,
+          // Explicitly set the limit to null to get all the groups, not just the top 100.
+          limit: null
+        })
+      : null;
   $: counts = ($countQuery?.data?.counts || []).map(([name, count]) => ({
     name,
     count
@@ -78,34 +99,26 @@
     if (total == null) return '0';
     return ((count / total) * 100).toFixed(2);
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function groupResultFromItem(item: any): (typeof counts)[0] {
+    // This is just a type-cast for the svelte component below. We haven't upgraded to the svelte
+    // version that supports generics, so we have to do this type-cast.
+    return item as (typeof counts)[0];
+  }
 </script>
 
-<div
-  class="flex flex-row flex-wrap"
-  class:max-h-screen={!isExpanded}
-  class:text-preview-overlay={!isExpanded}
->
+<div class="flex w-full flex-row flex-wrap" bind:this={root}>
   {#if $countQuery?.isFetching}
     <SkeletonText />
   {/if}
   {#if counts.length > 0}
-    <Carousel
-      particlesToShow="6"
-      particlesToScroll="6"
-      swiping={false}
-      let:showPrevPage
-      let:showNextPage
-    >
-      <div slot="prev" class="flex items-center">
-        <button class="mx-1" on:click={() => showPrevPage()}><ChevronLeft /></button>
-      </div>
-      <div slot="next" class="flex items-center">
-        <button class="mx-1" on:click={() => showNextPage()}><ChevronRight /></button>
-      </div>
-      {#each counts as count}
+    <Carousel items={counts} pageSize={ITEMS_PER_PAGE}>
+      <div class="w-full" slot="item" let:item>
+        {@const count = groupResultFromItem(item)}
         {@const groupPercentage = getPercentage(count.count, numRowsInGroup)}
         {@const totalPercentage = getPercentage(count.count, numRowsInQuery)}
-        <div class="min-w-64 md:1/2 h-full p-1 lg:w-1/6">
+        <div class="min-w-64 md:1/2 h-full flex-grow p-1">
           <div
             class="flex h-full w-full max-w-sm flex-col justify-between gap-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow"
           >
@@ -160,16 +173,12 @@
             </a>
           </div>
         </div>
-      {/each}
+      </div>
     </Carousel>
   {/if}
 </div>
 
 <style lang="postcss">
-  .text-preview-overlay {
-    mask-image: linear-gradient(to top, transparent, white 100px);
-    z-index: 0 !important;
-  }
   .card-title {
     width: 100%;
     overflow: hidden;
