@@ -1,3 +1,4 @@
+import {base} from '$app/paths';
 import {defaultDatasetViewState, type DatasetViewState} from './stores/datasetViewStore';
 import {serializeState} from './stores/urlHashStore';
 
@@ -10,7 +11,7 @@ export function conceptIdentifier(namespace: string, conceptName: string) {
 }
 
 export function conceptLink(namespace: string, conceptName: string) {
-  return `/concepts#${conceptIdentifier(namespace, conceptName)}`;
+  return `${base}/concepts#${conceptIdentifier(namespace, conceptName)}`;
 }
 
 export function datasetIdentifier(namespace: string, datasetName: string) {
@@ -27,11 +28,31 @@ export function datasetLink(
     const defaultState = defaultDatasetViewState(namespace, datasetName);
     hashState = serializeState(datasetViewState, defaultState);
   }
-  return `/datasets#${datasetIdentifier(namespace, datasetName)}${
+  return `${base}/datasets#${datasetIdentifier(namespace, datasetName)}${
     hashState != null ? `&${hashState}` : ''
   }`;
 }
 
 export function signalLink(name: string) {
-  return `/signals#${name}`;
+  return `${base}/signals#${name}`;
+}
+
+export function newDatasetLink() {
+  return `${base}/datasets/new`;
+}
+
+export function homeLink() {
+  return `${base}/`;
+}
+
+export function ragLink() {
+  return `${base}/rag`;
+}
+
+export function settingsLink() {
+  return `${base}/settings`;
+}
+
+export function datasetLoadingLink(namespace: string, datasetName: string, taskId: string) {
+  return `${base}/datasets/loading#${datasetIdentifier(namespace, datasetName)}/${taskId}`;
 }

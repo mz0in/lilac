@@ -7,7 +7,7 @@
   import {querySignals} from '$lib/queries/signalQueries';
   import {getNavigationContext} from '$lib/stores/navigationStore';
   import {getUrlHashContext, type AppPage} from '$lib/stores/urlHashStore';
-  import {conceptLink} from '$lib/utils';
+  import {conceptLink, homeLink, newDatasetLink, ragLink, settingsLink} from '$lib/utils';
   import {getTaggedConcepts, getTaggedDatasets} from '$lib/view_utils';
   import {AddAlt, DataVis_3, Settings, SidePanelClose} from 'carbon-icons-svelte';
   import NavigationCategory from './NavigationCategory.svelte';
@@ -92,7 +92,7 @@
     <div
       class="header flex flex-row items-center justify-between border-b border-gray-200 px-1 pl-4"
     >
-      <a class="flex flex-row items-center text-xl normal-case" href="/">
+      <a class="flex flex-row items-center text-xl normal-case" href={homeLink()}>
         <img class="logo-img mr-2 rounded opacity-90" src={logo_50x50} alt="Logo" />
         Lilac
       </a>
@@ -113,8 +113,11 @@
       {#if canCreateDataset}
         <button
           class="mr-1 flex w-full flex-row px-1 py-1 text-black hover:bg-gray-200"
-          on:click={() => goto('/datasets/new')}><AddAlt class="mr-1" />Add dataset</button
+          on:click={() => goto(newDatasetLink())}
         >
+          <AddAlt class="mr-1" />
+          Add dataset
+        </button>
       {/if}
     </div>
   </NavigationCategory>
@@ -152,7 +155,7 @@
     <button
       class={`w-full px-4 py-2 text-left  ${!settingsSelected ? 'hover:bg-gray-100' : ''}`}
       class:bg-neutral-200={settingsSelected}
-      on:click={() => goto('/rag')}
+      on:click={() => goto(ragLink())}
     >
       <div class="flex items-center gap-x-3">
         <div class="flex-grow text-sm font-medium">RAG</div>
@@ -164,7 +167,7 @@
     <button
       class={`w-full px-4 py-2 text-left  ${!settingsSelected ? 'hover:bg-gray-100' : ''}`}
       class:bg-neutral-200={settingsSelected}
-      on:click={() => goto('/settings')}
+      on:click={() => goto(settingsLink())}
     >
       <div class="flex items-center justify-between">
         <div class="text-sm font-medium">Settings</div>
