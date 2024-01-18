@@ -5,10 +5,11 @@
     getSelectRowsOptions,
     getSelectRowsSchemaOptions
   } from '$lib/stores/datasetViewStore';
-  import {ROWID, type SelectRowsResponse} from '$lilac';
+  import {L, ROWID, type SelectRowsResponse} from '$lilac';
   export let limit: number;
   export let offset: number | undefined = undefined;
   export let rowsResponse: SelectRowsResponse | undefined = undefined;
+  export let lookAheadRowId: string | null = null;
 
   const store = getDatasetViewContext();
 
@@ -24,7 +25,7 @@
     {
       ...selectOptions,
       columns: [ROWID],
-      limit,
+      limit: limit + 1,
       offset
     },
     $selectRowsSchema.data?.schema
@@ -37,9 +38,17 @@
       !$rowsQuery.isPreviousData &&
       !$rowsQuery.isFetching
     ) {
-      rowsResponse = $rowsQuery.data;
+      rowsResponse = {
+        total_num_rows: $rowsQuery.data.total_num_rows,
+        rows: $rowsQuery.data.rows.slice(0, -1)
+      };
+      lookAheadRowId = L.value(
+        $rowsQuery.data.rows?.[$rowsQuery.data.rows.length - 1]?.[ROWID],
+        'string'
+      );
     } else {
       rowsResponse = undefined;
+      lookAheadRowId = null;
     }
   }
 </script>
