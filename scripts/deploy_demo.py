@@ -36,7 +36,7 @@ from lilac.data.dataset_storage_utils import upload
 from lilac.deploy import deploy_project
 from lilac.env import env
 from lilac.load import load
-from lilac.utils import get_datasets_dir, get_hf_dataset_repo_id
+from lilac.utils import get_datasets_dir, get_hf_dataset_repo_id, log
 
 
 @click.command()
@@ -142,7 +142,7 @@ def deploy_demo(
         print('Dataset does not exist on HuggingFace, skipping sync: ', ds)
         continue
 
-      print(f'Downloading dataset from HuggingFace "{repo_id}": ', ds)
+      log(f'Downloading dataset from HuggingFace "{repo_id}": ', ds)
       snapshot_download(
         repo_id=repo_id,
         repo_type='dataset',

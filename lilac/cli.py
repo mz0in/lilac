@@ -14,7 +14,7 @@ from .hf_docker_start import hf_docker_start
 from .load import load
 from .project import dir_is_project, init, project_dir_from_args, read_project_config
 from .server import start_server
-from .utils import get_hf_dataset_repo_id
+from .utils import get_hf_dataset_repo_id, log
 
 
 @click.command()
@@ -96,7 +96,7 @@ def load_command(project_dir: str, config_path: str, overwrite: bool) -> None:
 @click.command()
 def version() -> None:
   """Prints the version of Lilac."""
-  print(__version__)
+  log(__version__)
 
 
 @click.command()
@@ -310,7 +310,7 @@ def upload_command(
 @click.command()
 def concepts() -> None:
   """Lists lilac concepts."""
-  print(DISK_CONCEPT_DB.list())
+  log(DISK_CONCEPT_DB.list())
 
 
 @click.group()
