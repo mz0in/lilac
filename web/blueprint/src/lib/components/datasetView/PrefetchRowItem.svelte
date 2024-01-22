@@ -1,6 +1,10 @@
 <!-- Prefetches the row item -->
 <script lang="ts">
-  import {queryRowMetadata, querySelectRowsSchema} from '$lib/queries/datasetQueries';
+  import {
+    queryDatasetSchema,
+    queryRowMetadata,
+    querySelectRowsSchema
+  } from '$lib/queries/datasetQueries';
   import {
     getDatasetViewContext,
     getSelectRowsOptions,
@@ -10,14 +14,15 @@
   export let rowId: string | null;
 
   const datasetViewStore = getDatasetViewContext();
+  $: schema = queryDatasetSchema($datasetViewStore.namespace, $datasetViewStore.datasetName);
   $: namespace = $datasetViewStore.namespace;
   $: datasetName = $datasetViewStore.datasetName;
-  $: selectOptions = getSelectRowsOptions($datasetViewStore);
   $: selectRowsSchema = querySelectRowsSchema(
     namespace,
     datasetName,
-    getSelectRowsSchemaOptions($datasetViewStore)
+    getSelectRowsSchemaOptions($datasetViewStore, $schema.data)
   );
+  $: selectOptions = getSelectRowsOptions($datasetViewStore, $selectRowsSchema.data?.schema);
   $: rowQuery =
     !$selectRowsSchema.isFetching &&
     $selectRowsSchema?.data?.schema != null &&
