@@ -105,7 +105,7 @@ datasets:
           - '*'
           - content
 
-  - name: 'OpenOrca'
+  - name: OpenOrca
     namespace: lilac
     settings:
       tags: [datasets]
@@ -123,21 +123,42 @@ datasets:
           - question
 
   - namespace: lilac
-    name: mosaic-instruct-v3
+    name: SlimOrca
     source:
-      dataset_name: mosaicml/instruct-v3
+      dataset_name: Open-Orca/SlimOrca
+      source_name: huggingface
+    settings:
+      tags: [datasets]
+      ui:
+        media_paths:
+          - - conversations
+            - '*'
+            - value
+
+  - namespace: lilac
+    name: UltraChat-200k
+    source:
+      dataset_name: HuggingFaceH4/ultrachat_200k
+      source_name: huggingface
+    settings:
+      tags: [datasets]
+      ui:
+        media_paths:
+          - - messages
+            - '*'
+            - content
+
+  - namespace: lilac
+    name: roblox_luau_corpus
+    source:
+      dataset_name: Roblox/luau_corpus
       source_name: huggingface
     settings:
       tags: [datasets]
       ui:
         media_paths:
           - prompt
-          - response
-        markdown_paths: []
-    embeddings:
-      - embedding: gte-small
-        path:
-          - prompt
+          - completion
 
   ## Eval datasets
   - namespace: lilac
@@ -303,11 +324,10 @@ datasets:
           - option2
           - answer
 
-  ## Old datasets to be cleaned up.
   - name: databricks-dolly-15k-curated-en
     namespace: lilac
     settings:
-      tags: [machine-learning]
+      tags: [datasets]
       ui:
         media_paths:
           - original-instruction
@@ -337,20 +357,34 @@ datasets:
           - original-response
 
   - namespace: lilac
+    name: mosaic-instruct-v3
+    source:
+      dataset_name: mosaicml/instruct-v3
+      source_name: huggingface
+    settings:
+      tags: [datasets]
+      ui:
+        media_paths:
+          - prompt
+          - response
+    embeddings:
+      - embedding: gte-small
+        path:
+          - prompt
+
+  - namespace: lilac
     name: dolphin
-    tags: [datasets]
     source:
       dataset_name: cognitivecomputations/dolphin
       config_name: flan1m-alpaca-uncensored
       source_name: huggingface
     settings:
+      tags: [datasets]
       ui:
         media_paths:
           - instruction
           - input
           - output
-          - - input__cluster
-            - text
 
 signals:
   - signal_name: text_statistics
@@ -389,7 +423,7 @@ clusters:
   - dataset_namespace: lilac
     dataset_name: lmsys-chat-1m
     input_selector:
-      format: openai_json
+      format: openai_conversation_json
       selector: user
     output_path:
       - conversation__clusters
@@ -400,6 +434,14 @@ clusters:
       - question
 
   - dataset_namespace: lilac
+    dataset_name: SlimOrca
+    input_selector:
+      format: sharegpt
+      selector: human
+    output_path:
+      - conversation__clusters
+
+  - dataset_namespace: lilac
     dataset_name: databricks-dolly-15k-curated-en
     input_path:
       - original-instruction
@@ -408,6 +450,30 @@ clusters:
     dataset_name: mosaic-instruct-v3
     input_path:
       - prompt
+
+  - dataset_namespace: lilac
+    dataset_name: dolphin
+    input_path:
+      - input
+
+  - dataset_namespace: lilac
+    dataset_name: UltraChat-200k
+    input_selector:
+      format: openai_json
+      selector: user
+    output_path:
+      - messages__clusters
+
+  # NOTE: We cluster both prompt and completion because the roblox prompts are just small sections
+  # of code which are not extremely descriptive.
+  - dataset_namespace: lilac
+    dataset_name: roblox_luau_corpus
+    input_path:
+      - prompt
+  - dataset_namespace: lilac
+    dataset_name: roblox_luau_corpus
+    input_path:
+      - completion
 
   ## Eval datasets
   - dataset_namespace: lilac
@@ -463,12 +529,6 @@ clusters:
     dataset_name: WinoGrande
     input_path:
       - sentence
-
-  ## Other datasets
-  - dataset_namespace: lilac
-    dataset_name: dolphin
-    input_path:
-      - input
 
 concept_model_cache_embeddings:
   - gte-small
