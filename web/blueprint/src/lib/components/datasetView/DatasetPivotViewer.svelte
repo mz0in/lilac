@@ -28,10 +28,11 @@
     DropdownItem,
     DropdownItemId
   } from 'carbon-components-svelte/types/Dropdown/Dropdown.svelte';
-  import {Close, Search} from 'carbon-icons-svelte';
+  import {ArrowUpRight, Close, Search} from 'carbon-icons-svelte';
   import DropdownPill from '../common/DropdownPill.svelte';
   import {hoverTooltip} from '../common/HoverTooltip';
   import DatasetPivotResult, {type OuterPivot} from './DatasetPivotResult.svelte';
+  import FilterControls from './FilterControls.svelte';
 
   let outerLeafPath: Path | undefined = undefined;
   let innerLeafPath: Path | undefined = undefined;
@@ -80,7 +81,7 @@
     const groups = pivotTable.outer_groups.map(outerGroup => ({
       value: outerGroup.value,
       count: outerGroup.count,
-      percentage: getPercentage(outerGroup.count),
+      percentage: getPercentage(outerGroup.count, numRowsInQuery),
       textHighlights: getSearchHighlighting(outerGroup.value, searchText),
       inner: outerGroup.inner
         .filter(x => searchQuery == null || x[0].toLowerCase().includes(searchQuery))
@@ -100,7 +101,7 @@
 
   $: groups = getGroups($pivotQuery?.data, $store.pivot?.searchText);
 
-  function getPercentage(count: number) {
+  function getPercentage(count: number, numRowsInQuery: number | undefined) {
     if (numRowsInQuery == null) return '';
     return ((count / numRowsInQuery) * 100).toFixed(2);
   }
@@ -163,7 +164,7 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <div class="mb-8 flex h-16 w-full flex-row justify-between justify-items-center gap-x-4">
+  <div class="mb-8 mt-2 flex h-16 w-full flex-row justify-between justify-items-center gap-x-4">
     <div
       class="search-box ml-8 mt-4 flex w-96 items-center gap-x-2 rounded-lg border border-gray-400 px-1"
     >
@@ -181,7 +182,7 @@
         <button on:click={clearSearch}><Close /></button>
       </div>
     </div>
-    <div class="mr-8 flex flex-row gap-x-4 py-2 pr-4">
+    <div class="h-18 mr-8 flex flex-row items-end gap-x-4 pr-4">
       <div class="flex flex-col gap-y-2">
         <div>Explore</div>
         <DropdownPill
@@ -224,6 +225,9 @@
           {/if}
         </DropdownPill>
       </div>
+      <div>
+        <FilterControls />
+      </div>
     </div>
   </div>
 
@@ -247,29 +251,34 @@
             groupBy: outerLeafPath ? {path: outerLeafPath, value: group.value} : undefined
           })}
 
-          <div class="flex w-full flex-row">
-            <div class="mb-4 flex w-48 flex-col items-center justify-between gap-y-4 p-6">
+          <div class="flex w-full flex-row gap-x-4 rounded py-2">
+            <div
+              class="flex h-full w-72 flex-col justify-between gap-y-4 self-start rounded-lg px-4 pt-4"
+            >
               <div
-                class="mx-2 h-16 whitespace-break-spaces py-0.5 text-center text-2xl leading-7 tracking-tight"
+                title={group.value}
+                class="card-outer-title w-16 whitespace-break-spaces text-3xl leading-9 tracking-tight"
               >
                 {#each group.textHighlights as highlight}
                   {#if highlight.isBold}<span class="font-bold">{highlight.text}</span>
                   {:else}<span>{highlight.text}</span>{/if}
                 {/each}
               </div>
-              <div class="flex w-full flex-col items-center font-light">
-                <span class="ml-2 text-xl text-neutral-800">
+              <div class="flex w-full flex-col font-light">
+                <span class="text-3xl text-neutral-600">
                   {group.percentage}%
                 </span>
-                <span class="ml-2 text-neutral-500">
+                <span class="text-lg text-neutral-500">
                   {group.count.toLocaleString()} rows
                 </span>
               </div>
-              <a class="flex flex-row" href={groupLink}>
-                <button class="border border-neutral-300">Explore</button></a
+              <a class="mb-2 flex flex-row" href={groupLink}>
+                <button
+                  class="flex flex-row items-center gap-x-2 border border-neutral-300 bg-violet-200 bg-opacity-70 font-light text-black shadow"
+                  >Explore <ArrowUpRight /></button
+                ></a
               >
             </div>
-
             {#if outerLeafPath && innerLeafPath && numRowsInQuery}
               <DatasetPivotResult
                 filter={group.value == null
@@ -290,6 +299,13 @@
 </div>
 
 <style lang="postcss">
+  .card-outer-title {
+    width: 100%;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+  }
   .search-box:focus-within {
     @apply outline outline-1 outline-blue-500;
   }
