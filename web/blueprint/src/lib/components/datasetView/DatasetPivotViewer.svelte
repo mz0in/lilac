@@ -162,6 +162,13 @@
     inputSearchText = undefined;
     search();
   }
+
+  const WIDTH_PER_ITEM_PX = 256;
+  const DEFAULT_ITEMS_PER_PAGE = 4;
+  let carouselWidth: number | undefined = undefined;
+  $: itemsPerPage = carouselWidth
+    ? Math.round(carouselWidth / WIDTH_PER_ITEM_PX)
+    : DEFAULT_ITEMS_PER_PAGE;
 </script>
 
 <div class="flex h-full flex-col">
@@ -281,14 +288,17 @@
               >
             </div>
             {#if outerLeafPath && innerLeafPath && numRowsInQuery}
-              <DatasetPivotResult
-                filter={group.value == null
-                  ? {path: outerLeafPath, op: 'not_exists'}
-                  : {path: outerLeafPath, op: 'equals', value: group.value}}
-                {group}
-                path={innerLeafPath}
-                {numRowsInQuery}
-              />
+              <div class="flex w-full" bind:clientWidth={carouselWidth}>
+                <DatasetPivotResult
+                  filter={group.value == null
+                    ? {path: outerLeafPath, op: 'not_exists'}
+                    : {path: outerLeafPath, op: 'equals', value: group.value}}
+                  {group}
+                  path={innerLeafPath}
+                  {numRowsInQuery}
+                  {itemsPerPage}
+                />
+              </div>
             {/if}
           </div>
         {:else}
