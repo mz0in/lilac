@@ -418,7 +418,55 @@ class DatasetDuckDB(Dataset):
   # NOTE: This is cached, but when the latest mtime of any file in the dataset directory changes
   # the results are invalidated.
   @functools.lru_cache(maxsize=1)
-  def _recompute_joint_table(self, latest_mtime_micro_sec: int) -> DatasetManifest:
+  def _recompute_joint_table(
+    self, latest_mtime_micro_sec: int, sqlite_files: tuple[str]
+  ) -> DatasetManifest:
+    """Recomputes tables and/or views providing a unified view over the dataset.
+
+    High level strategy: create views for each major class of data, then merge all the views.
+    CREATE VIEW signals AS (
+      ...
+    )
+    CREATE VIEW labels AS (
+      ...
+    )
+    CREATE VIEW maps AS (
+      ...
+    )
+    CREATE VIEW t AS (
+      SELECT sources.*, signals.*, labels.*, maps.*
+      FROM sources
+      JOIN signals USING (rowid)
+      JOIN labels USING (rowid)
+      JOIN maps USING (rowid))
+
+    If LILAC_USE_TABLE_INDEX is set, then we apply a further optimization where we create a DuckDB
+    table as a cache and index over Sources, Signals, and Maps (excluding labels). We invalidate
+    this cache if the underlying data is updated. Labels are excluded from the cache because users
+    expect labeling to be a milliseconds-long operations, but recomputing the entire DuckDB table
+    can take a second for a 100k row table. Luckily, labels are stored as a indexed sqlite table, so
+    we can join them in at query time. The only time this logic is invalid is if an entire label
+    type is deleted or created. Therefore the sqlite files are added to the function signature for
+    cache busting reasons.
+
+    CREATE TABLE cached_t AS (
+      SELECT sources.*, signals.*, maps.*
+      FROM sources
+      JOIN signals USING (rowid)
+      JOIN maps USING (rowid))
+    CREATE INDEX ON cached_t (rowid)
+
+    CREATE VIEW t AS (
+      SELECT cached_t.*, labels.*
+      FROM cached_t
+      JOIN labels USING (rowid))
+    )
+
+    One final complication is that the duckdb table is now on-disk state that can become invalid
+    for a variety of reasons (bugs, lilac version migrations, DuckDB version bumps.)
+    The solution is to nuke and recompute the entire cache if anything fails.
+    """
+    del sqlite_files  # Unused.
     merged_schema = self._source_manifest.data_schema.model_copy(deep=True)
     self._signal_manifests = []
     self._label_schemas = {}
@@ -430,7 +478,7 @@ class DatasetDuckDB(Dataset):
       type='parquet',
     )
 
-    # Add the signal column groups.
+    # Walk dataset directory and create views for each data type
     for root, _, files in os.walk(self.dataset_path):
       for file in files:
         if file.endswith(SIGNAL_MANIFEST_FILENAME):
@@ -508,20 +556,6 @@ class DatasetDuckDB(Dataset):
       """
       )
 
-    select_sql = ', '.join(
-      [f'{SOURCE_VIEW_NAME}.*'] + signal_column_selects + map_column_selects + label_column_selects
-    )
-
-    # Get parquet ids for signals, maps, and labels.
-    parquet_ids = [
-      manifest.parquet_id
-      for manifest in self._signal_manifests + self._map_manifests
-      if manifest.files
-    ] + list(self._label_schemas.keys())
-    join_sql = ' '.join(
-      [SOURCE_VIEW_NAME]
-      + [f'LEFT JOIN {escape_col_name(parquet_id)} USING ({ROWID})' for parquet_id in parquet_ids]
-    )
     if env('LILAC_USE_TABLE_INDEX', default=False):
       self.con.execute(
         """CREATE TABLE IF NOT EXISTS mtime_cache AS
@@ -532,13 +566,60 @@ class DatasetDuckDB(Dataset):
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 't'"
       ).fetchone()[0]  # type: ignore
       if db_mtime != latest_mtime_micro_sec or not table_exists:
+        table_select_sql = ', '.join(
+          [f'{SOURCE_VIEW_NAME}.*'] + signal_column_selects + map_column_selects
+        )
+
+        # Get parquet ids for signals, maps
+        parquet_ids = [
+          manifest.parquet_id
+          for manifest in self._signal_manifests + self._map_manifests
+          if manifest.files
+        ]
+        table_join_sql = ' '.join(
+          [SOURCE_VIEW_NAME]
+          + [
+            f'LEFT JOIN {escape_col_name(parquet_id)} USING ({ROWID})' for parquet_id in parquet_ids
+          ]
+        )
         with DebugTimer(f'Recomputing table+index for {self.dataset_name}...'):
           self.con.execute('UPDATE mtime_cache SET mtime = ?', (latest_mtime_micro_sec,))
-          self.con.execute(f'CREATE OR REPLACE TABLE t AS (SELECT {select_sql} FROM {join_sql})')
-          self.con.execute('CREATE INDEX row_idx ON t ("__rowid__")')
+          self.con.execute(
+            f'CREATE OR REPLACE TABLE cache_t AS (SELECT {table_select_sql} FROM {table_join_sql})'
+          )
+          self.con.execute(f'CREATE INDEX row_idx ON cache_t ({ROWID})')
           # If not checkpointed, the index will sometimes not be flushed to disk and be recomputed.
           self.con.execute('CHECKPOINT')
+      view_select_sql = ', '.join(['cache_t.*'] + label_column_selects)
+      view_join_sql = ' '.join(
+        ['cache_t']
+        + [
+          f'LEFT JOIN {escape_col_name(label_name)} USING ({ROWID})'
+          for label_name in self._label_schemas.keys()
+        ]
+      )
+      self.con.execute(
+        f'CREATE OR REPLACE VIEW t AS (SELECT {view_select_sql} FROM {view_join_sql})'
+      )
+
     else:
+      select_sql = ', '.join(
+        [f'{SOURCE_VIEW_NAME}.*']
+        + signal_column_selects
+        + map_column_selects
+        + label_column_selects
+      )
+
+      # Get parquet ids for signals, maps, and labels.
+      parquet_ids = [
+        manifest.parquet_id
+        for manifest in self._signal_manifests + self._map_manifests
+        if manifest.files
+      ] + list(self._label_schemas.keys())
+      join_sql = ' '.join(
+        [SOURCE_VIEW_NAME]
+        + [f'LEFT JOIN {escape_col_name(parquet_id)} USING ({ROWID})' for parquet_id in parquet_ids]
+      )
       sql_cmd = f"""
         CREATE OR REPLACE VIEW t AS (SELECT {select_sql} FROM {join_sql})
       """
@@ -574,7 +655,12 @@ class DatasetDuckDB(Dataset):
     self._recompute_joint_table.cache_clear()
     self._pivot_cache.clear()
     if env('LILAC_USE_TABLE_INDEX', default=False):
-      self.con.execute('DROP TABLE IF EXISTS mtime_cache')
+      self.con.close()
+      pathlib.Path(os.path.join(self.dataset_path, DUCKDB_CACHE_FILE)).unlink(missing_ok=True)
+      pathlib.Path(os.path.join(self.dataset_path, DUCKDB_CACHE_FILE + '.wal')).unlink(
+        missing_ok=True
+      )
+      self.con = duckdb.connect(database=os.path.join(self.dataset_path, DUCKDB_CACHE_FILE))
 
   def _add_map_keys_to_schema(self, path: PathTuple, field: Field, merged_schema: Schema) -> None:
     """Adds the keys of a map to the schema."""
@@ -602,9 +688,18 @@ class DatasetDuckDB(Dataset):
       all_dataset_files = glob.iglob(os.path.join(self.dataset_path, '**'), recursive=True)
       all_dataset_files = (f for f in all_dataset_files if DUCKDB_CACHE_FILE not in f)
       all_dataset_files = (f for f in all_dataset_files if os.path.isfile(f))
-      latest_mtime = max(map(os.path.getmtime, all_dataset_files))
+      rapid_change, slow_change = itertools.tee(all_dataset_files)
+      rapid_change = (f for f in rapid_change if f.endswith(LABELS_SQLITE_SUFFIX))
+      slow_change = (f for f in slow_change if not f.endswith(LABELS_SQLITE_SUFFIX))
+      latest_mtime = max(map(os.path.getmtime, slow_change))
       latest_mtime_micro_sec = int(latest_mtime * 1e6)
-      return self._recompute_joint_table(latest_mtime_micro_sec)
+      try:
+        return self._recompute_joint_table(latest_mtime_micro_sec, tuple(sorted(rapid_change)))
+      except Exception as e:
+        log(e)
+        log('Exception encountered while updating joint table cache; recomputing from scratch.')
+        self._clear_joint_table_cache()
+        return self._recompute_joint_table(latest_mtime_micro_sec, tuple(sorted(rapid_change)))
 
   def count(self, query_options: Optional[DuckDBQueryParams] = None) -> int:
     """Count the number of rows."""
