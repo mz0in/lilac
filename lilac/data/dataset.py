@@ -5,7 +5,7 @@ import abc
 import enum
 import pathlib
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Callable, Iterable, Iterator, Literal, Optional, Sequence, Union
 
 import numpy as np
@@ -112,12 +112,19 @@ class StatsResult(BaseModel):
   # The approximate number of distinct leaf values.
   approx_count_distinct: int
 
-  # Defined for ordinal features.
-  min_val: Optional[Union[float, datetime]] = None
-  max_val: Optional[Union[float, datetime]] = None
+  # Defined for numeric features.
+  min_val: Optional[Union[float, date, datetime]] = None
+  max_val: Optional[Union[float, date, datetime]] = None
+  # Samples for calculating histogram bins.
+  value_samples: list[float] = PydanticField(default=[], exclude=True, repr=False)
 
   # Defined for text features.
   avg_text_length: Optional[float] = None
+
+  def __eq__(self, other: object) -> bool:
+    if not isinstance(other, StatsResult):
+      return NotImplemented
+    return self.model_dump(exclude={'value_samples'}) == other.model_dump(exclude={'value_samples'})
 
 
 class MediaResult(BaseModel):
